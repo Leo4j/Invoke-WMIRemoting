@@ -47,9 +47,15 @@ function Invoke-WMIRemoting {
     $ClassID = "Custom_WMI_" + (Get-Random)
     $KeyID = "CmdGUID"
 	
+	$Error.Clear()
+	
 	if($UserName -AND $Password){
 		$classExists = Get-WmiObject -Class $ClassID -ComputerName $ComputerName -List -Namespace "root\cimv2" -Credential $cred
 	}else{$classExists = Get-WmiObject -Class $ClassID -ComputerName $ComputerName -List -Namespace "root\cimv2"}
+	
+	if($error[0]){break}
+	
+	$Error.Clear()
     
 	if (-not $classExists) {
         $createNewClass = New-Object System.Management.ManagementClass("\\$ComputerName\root\cimv2", [string]::Empty, $null)
@@ -60,10 +66,17 @@ function Invoke-WMIRemoting {
 		$createNewClass.Properties.Add("CommandStatus", [System.Management.CimType]::String, $false)
         $createNewClass.Put() | Out-Null
     }
+	
+	if($error[0]){break}
+	
+	$Error.Clear()
+	
     $wmiData = Set-WmiInstance -Class $ClassID -ComputerName $ComputerName
     $wmiData.GetType() | Out-Null
     $GuidOutput = ($wmiData | Select-Object -Property $KeyID -ExpandProperty $KeyID)
     $wmiData.Dispose()
+	
+	if($error[0]){break}
 
     $RunCmd = {
         param ([string]$CmdInput)
@@ -76,7 +89,12 @@ function Invoke-WMIRemoting {
         if($cred){$startProcess = Invoke-WmiMethod -ComputerName $ComputerName -Class Win32_Process -Name Create -Credential $cred -ArgumentList ("powershell.exe -NoLogo -NonInteractive -ExecutionPolicy Unrestricted -WindowStyle Hidden -EncodedCommand " + $finalCommandBase64)}
 		else{$startProcess = Invoke-WmiMethod -ComputerName $ComputerName -Class Win32_Process -Name Create -ArgumentList ("powershell.exe -NoLogo -NonInteractive -ExecutionPolicy Unrestricted -WindowStyle Hidden -EncodedCommand " + $finalCommandBase64)}
 
-        if ($startProcess.ReturnValue -eq 0) {
+        if ($startProcess.ReturnValue -ne 0) {
+			throw "Failed to start process on $ComputerName. Return value: $($startProcess.ReturnValue)"
+			return
+		}
+		
+		if ($startProcess.ReturnValue -eq 0) {
 			$elapsedTime = 0
 			$timeout = 60
 			do {
@@ -95,6 +113,7 @@ function Invoke-WMIRemoting {
             return $resultData
         } else {
             throw "Failed to run command on $ComputerName."
+			return
         }
     }
 
