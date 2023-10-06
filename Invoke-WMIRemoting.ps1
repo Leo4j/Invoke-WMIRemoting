@@ -58,25 +58,54 @@ function Invoke-WMIRemoting {
 	$Error.Clear()
     
 	if (-not $classExists) {
-        $createNewClass = New-Object System.Management.ManagementClass("\\$ComputerName\root\cimv2", [string]::Empty, $null)
-        $createNewClass["__CLASS"] = $ClassID
-        $createNewClass.Properties.Add($KeyID, [System.Management.CimType]::String, $false)
-        $createNewClass.Properties[$KeyID].Qualifiers.Add("Key", $true)
-        $createNewClass.Properties.Add("OutputData", [System.Management.CimType]::String, $false)
-		$createNewClass.Properties.Add("CommandStatus", [System.Management.CimType]::String, $false)
-        $createNewClass.Put() | Out-Null
+		
+		if($cred){
+			$connectionOptions = New-Object System.Management.ConnectionOptions
+			if($UserName -AND $Password){
+				$connectionOptions.Username = $UserName
+				$connectionOptions.Password = $Password
+			}
+
+			$scope = New-Object System.Management.ManagementScope("\\$ComputerName\root\cimv2", $connectionOptions)
+			$scope.Connect()
+			
+			$createNewClass = New-Object System.Management.ManagementClass($scope, [System.Management.ManagementPath]::new(), $null)
+			$createNewClass["__CLASS"] = $ClassID
+			$createNewClass.Properties.Add($KeyID, [System.Management.CimType]::String, $false)
+			$createNewClass.Properties[$KeyID].Qualifiers.Add("Key", $true)
+			$createNewClass.Properties.Add("OutputData", [System.Management.CimType]::String, $false)
+			$createNewClass.Properties.Add("CommandStatus", [System.Management.CimType]::String, $false)
+			$createNewClass.Put() | Out-Null
+		}
+		else{
+			$createNewClass = New-Object System.Management.ManagementClass("\\$ComputerName\root\cimv2", [string]::Empty, $null)
+			$createNewClass["__CLASS"] = $ClassID
+			$createNewClass.Properties.Add($KeyID, [System.Management.CimType]::String, $false)
+			$createNewClass.Properties[$KeyID].Qualifiers.Add("Key", $true)
+			$createNewClass.Properties.Add("OutputData", [System.Management.CimType]::String, $false)
+			$createNewClass.Properties.Add("CommandStatus", [System.Management.CimType]::String, $false)
+			$createNewClass.Put() | Out-Null
+		}
     }
 	
 	if($error[0]){break}
 	
 	$Error.Clear()
 	
-    $wmiData = Set-WmiInstance -Class $ClassID -ComputerName $ComputerName
-    $wmiData.GetType() | Out-Null
-    $GuidOutput = ($wmiData | Select-Object -Property $KeyID -ExpandProperty $KeyID)
-    $wmiData.Dispose()
+	if($cred){$wmiData = Set-WmiInstance -Class $ClassID -ComputerName $ComputerName -Credential $cred}
+	else{$wmiData = Set-WmiInstance -Class $ClassID -ComputerName $ComputerName}
+	
+	$wmiData.GetType() | Out-Null
+	$GuidOutput = ($wmiData | Select-Object -Property $KeyID -ExpandProperty $KeyID)
+	$wmiData.Dispose()
+
 	
 	if($error[0]){break}
+	
+	$cimSession = $null
+	if ($cred) {
+		$cimSession = New-CimSession -ComputerName $ComputerName -Credential $cred
+	}
 
     $RunCmd = {
         param ([string]$CmdInput)
@@ -134,5 +163,24 @@ function Invoke-WMIRemoting {
         } while ($true)
     }
 	
-    ([wmiclass]"\\$ComputerName\ROOT\CIMV2:$ClassID").Delete()
+	
+	if($cred){
+		# Create a CimSession with the provided credentials
+		if($UserName -AND $Password) {
+			$sessionOptions = New-CimSessionOption -Protocol Dcom
+			$cimSession = New-CimSession -Credential $cred -ComputerName $ComputerName -SessionOption $sessionOptions
+		} else {
+			$cimSession = New-CimSession -ComputerName $ComputerName
+		}
+
+		# Use the CimSession to delete the class
+		$cimInstance = Get-CimInstance -Namespace "ROOT\CIMV2" -ClassName $ClassID -CimSession $cimSession -ErrorAction SilentlyContinue
+		if ($cimInstance) {
+			Remove-CimInstance -CimInstance $cimInstance
+		}
+
+		# Optionally, remove the session when done
+		$cimSession | Remove-CimSession
+	}
+	else{([wmiclass]"\\$ComputerName\ROOT\CIMV2:$ClassID").Delete()}
 }
