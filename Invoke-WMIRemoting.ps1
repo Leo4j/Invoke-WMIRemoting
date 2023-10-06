@@ -1,11 +1,11 @@
 function Invoke-WMIRemoting {
 	
 	<#
-
+	
 	.SYNOPSIS
 	Invoke-WMIRemoting Author: Rob LP (@L3o4j)
 	https://github.com/Leo4j/Invoke-WMIRemoting
-
+	
 	.DESCRIPTION
 	Command Execution or Pseudo-Shell over WMI
 	The user you run the script as needs to be Administrator over the ComputerName
@@ -22,7 +22,7 @@ function Invoke-WMIRemoting {
 	
 	.PARAMETER Password
 	Specify a Password for the UserName you want to authenticate as
-
+	
 	.EXAMPLE
 	Invoke-WMIRemoting -ComputerName Server01.domain.local
 	Invoke-WMIRemoting -ComputerName Server01.domain.local -Command "whoami /all"
@@ -31,27 +31,26 @@ function Invoke-WMIRemoting {
 	
 	#>
 	
-    param (
-        [Parameter(Mandatory = $true)]
-        [string]$ComputerName,
-        [string]$Command,
-		[string]$UserName,
-		[string]$Password
-    )
+	param (
+	[Parameter(Mandatory = $true)]
+	[string]$ComputerName,
+	[string]$Command,
+	[string]$UserName,
+	[string]$Password
+	)
 	
 	if($UserName -AND $Password){
 		$SecPassword = ConvertTo-SecureString $Password -AsPlainText -Force
 		$cred = New-Object System.Management.Automation.PSCredential($UserName,$SecPassword)
 	}
 
-    $ClassID = "Custom_WMI_" + (Get-Random)
-    $KeyID = "CmdGUID"
+	$ClassID = "Custom_WMI_" + (Get-Random)
+	$KeyID = "CmdGUID"
 	
 	$Error.Clear()
 	
-	if($UserName -AND $Password){
-		$classExists = Get-WmiObject -Class $ClassID -ComputerName $ComputerName -List -Namespace "root\cimv2" -Credential $cred
-	}else{$classExists = Get-WmiObject -Class $ClassID -ComputerName $ComputerName -List -Namespace "root\cimv2"}
+	if($UserName -AND $Password){$classExists = Get-WmiObject -Class $ClassID -ComputerName $ComputerName -List -Namespace "root\cimv2" -Credential $cred}
+ 	else{$classExists = Get-WmiObject -Class $ClassID -ComputerName $ComputerName -List -Namespace "root\cimv2"}
 	
 	if($error[0]){break}
 	
@@ -86,7 +85,7 @@ function Invoke-WMIRemoting {
 			$createNewClass.Properties.Add("CommandStatus", [System.Management.CimType]::String, $false)
 			$createNewClass.Put() | Out-Null
 		}
-    }
+	}
 	
 	if($error[0]){break}
 	
@@ -101,28 +100,37 @@ function Invoke-WMIRemoting {
 
 	
 	if($error[0]){break}
+ 
+	<#
+ 	The lines below cause an error when authenticating with local creds, even though a session is established.
+  	Possible solution below ( to run if .\Administrator ):
 	
-	$cimSession = $null
 	if ($cred) {
-		$cimSession = New-CimSession -ComputerName $ComputerName -Credential $cred
+	    $options = New-CimSessionOption -Authentication Negotiate
+	    $cimSession = New-CimSession -ComputerName $ComputerName -Credential $cred -SessionOption $options
 	}
+	The following command, if run on localhost, will fix the issue: `Set-Item WSMan:\localhost\Client\TrustedHosts -Value "Workstation-01.ferrari.local" -Concatenate`
+	#>
+ 	
+	$cimSession = $null
+	if ($cred) {$cimSession = New-CimSession -ComputerName $ComputerName -Credential $cred}
 
-    $RunCmd = {
-        param ([string]$CmdInput)
+	$RunCmd = {
+	        param ([string]$CmdInput)
 		$resultData = $null
 		$wmiDataOutput = $null
-        $base64Input = [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($CmdInput))
-        $commandStr = "powershell.exe -NoLogo -NonInteractive -ExecutionPolicy Unrestricted -WindowStyle Hidden -EncodedCommand $base64Input"
-        $finalCommand = "`$outputData = &$commandStr | Out-String; Get-WmiObject -Class $ClassID -Filter `"$KeyID = '$GuidOutput'`" | Set-WmiInstance -Arguments `@{OutputData = `$outputData; CommandStatus='Completed'} | Out-Null"
-        $finalCommandBase64 = [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($finalCommand))
-        if($cred){$startProcess = Invoke-WmiMethod -ComputerName $ComputerName -Class Win32_Process -Name Create -Credential $cred -ArgumentList ("powershell.exe -NoLogo -NonInteractive -ExecutionPolicy Unrestricted -WindowStyle Hidden -EncodedCommand " + $finalCommandBase64)}
+	        $base64Input = [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($CmdInput))
+	        $commandStr = "powershell.exe -NoLogo -NonInteractive -ExecutionPolicy Unrestricted -WindowStyle Hidden -EncodedCommand $base64Input"
+	        $finalCommand = "`$outputData = &$commandStr | Out-String; Get-WmiObject -Class $ClassID -Filter `"$KeyID = '$GuidOutput'`" | Set-WmiInstance -Arguments `@{OutputData = `$outputData; CommandStatus='Completed'} | Out-Null"
+	        $finalCommandBase64 = [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($finalCommand))
+	        if($cred){$startProcess = Invoke-WmiMethod -ComputerName $ComputerName -Class Win32_Process -Name Create -Credential $cred -ArgumentList ("powershell.exe -NoLogo -NonInteractive -ExecutionPolicy Unrestricted -WindowStyle Hidden -EncodedCommand " + $finalCommandBase64)}
 		else{$startProcess = Invoke-WmiMethod -ComputerName $ComputerName -Class Win32_Process -Name Create -ArgumentList ("powershell.exe -NoLogo -NonInteractive -ExecutionPolicy Unrestricted -WindowStyle Hidden -EncodedCommand " + $finalCommandBase64)}
-
-        if ($startProcess.ReturnValue -ne 0) {
+	
+	        if ($startProcess.ReturnValue -ne 0) {
 			throw "Failed to start process on $ComputerName. Return value: $($startProcess.ReturnValue)"
 			return
 		}
-		
+			
 		if ($startProcess.ReturnValue -eq 0) {
 			$elapsedTime = 0
 			$timeout = 60
@@ -135,33 +143,35 @@ function Invoke-WMIRemoting {
 					break
 				}
 			} while ($elapsedTime -lt $timeout)
-            $resultData = $wmiDataOutput.OutputData
+			$resultData = $wmiDataOutput.OutputData
 			$wmiDataOutput.CommandStatus = "NotStarted"
 			$wmiDataOutput.Put() | Out-Null
-            $wmiDataOutput.Dispose()
-            return $resultData
-        } else {
-            throw "Failed to run command on $ComputerName."
+			$wmiDataOutput.Dispose()
+			return $resultData
+	        } 
+		else {
+			throw "Failed to run command on $ComputerName."
 			return
-        }
-    }
+	        }
+	}
 
-    if ($Command) {
-        $finalResult = & $RunCmd -CmdInput $Command
-        Write-Output $finalResult
-    } else {
-        do {
-            $inputFromUser = Read-Host "[$ComputerName]: PS:\>"
-            if ($inputFromUser -eq 'exit') {
-                Write-Output ""
-                break
-            }
-            if ($inputFromUser) {
-                $finalResult = & $RunCmd -CmdInput $inputFromUser
-                Write-Output $finalResult
-            }
-        } while ($true)
-    }
+	if ($Command) {
+		$finalResult = & $RunCmd -CmdInput $Command
+		Write-Output $finalResult
+	} 
+	else {
+	        do {
+	            $inputFromUser = Read-Host "[$ComputerName]: PS:\>"
+	            if ($inputFromUser -eq 'exit') {
+	                Write-Output ""
+	                break
+	            }
+	            if ($inputFromUser) {
+	                $finalResult = & $RunCmd -CmdInput $inputFromUser
+	                Write-Output $finalResult
+	            }
+	        } while ($true)
+	}
 	
 	
 	if($cred){
@@ -169,15 +179,12 @@ function Invoke-WMIRemoting {
 		if($UserName -AND $Password) {
 			$sessionOptions = New-CimSessionOption -Protocol Dcom
 			$cimSession = New-CimSession -Credential $cred -ComputerName $ComputerName -SessionOption $sessionOptions
-		} else {
-			$cimSession = New-CimSession -ComputerName $ComputerName
-		}
+		} 
+  		else {$cimSession = New-CimSession -ComputerName $ComputerName}
 
 		# Use the CimSession to delete the class
 		$cimInstance = Get-CimInstance -Namespace "ROOT\CIMV2" -ClassName $ClassID -CimSession $cimSession -ErrorAction SilentlyContinue
-		if ($cimInstance) {
-			Remove-CimInstance -CimInstance $cimInstance
-		}
+		if ($cimInstance) {Remove-CimInstance -CimInstance $cimInstance}
 
 		# Optionally, remove the session when done
 		$cimSession | Remove-CimSession
