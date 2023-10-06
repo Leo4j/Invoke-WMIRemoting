@@ -100,20 +100,6 @@ function Invoke-WMIRemoting {
 
 	
 	if($error[0]){break}
- 
-	<#
- 	The lines below cause an error when authenticating with local creds, even though a session is established.
-  	Possible solution below ( to run if .\Administrator ):
-	
-	if ($cred) {
-	    $options = New-CimSessionOption -Authentication Negotiate
-	    $cimSession = New-CimSession -ComputerName $ComputerName -Credential $cred -SessionOption $options
-	}
-	The following command, if run on localhost, will fix the issue: `Set-Item WSMan:\localhost\Client\TrustedHosts -Value "Workstation-01.ferrari.local" -Concatenate`
-	#>
- 	
-	$cimSession = $null
-	if ($cred) {$cimSession = New-CimSession -ComputerName $ComputerName -Credential $cred}
 
 	$RunCmd = {
 	        param ([string]$CmdInput)
