@@ -38,6 +38,9 @@ function Invoke-WMIRemoting {
 	[string]$UserName,
 	[string]$Password
 	)
+
+ 	$ErrorActionPreference = "SilentlyContinue"
+	$WarningPreference = "SilentlyContinue"
 	
 	if($UserName -AND $Password){
 		$SecPassword = ConvertTo-SecureString $Password -AsPlainText -Force
@@ -83,7 +86,7 @@ function Invoke-WMIRemoting {
 				$createNewClass.Put() | Out-Null
 			}
 		}
-  	} catch {Write-Output "[-] Error Creating Class"; break}
+  	} catch {Write-Output "[-] Access Denied"; Write-Output ""; break}
 	
 	try{
 		if($cred){$wmiData = Set-WmiInstance -Class $ClassID -ComputerName $ComputerName -Credential $cred}
@@ -92,7 +95,7 @@ function Invoke-WMIRemoting {
 		$wmiData.GetType() | Out-Null
 		$GuidOutput = ($wmiData | Select-Object -Property $KeyID -ExpandProperty $KeyID)
 		$wmiData.Dispose()
-  	} catch {Write-Output "[-] Error Creating Class"; break}
+  	} catch {Write-Output "[-] Access Denied"; Write-Output ""; break}
 
 
 	$RunCmd = {
