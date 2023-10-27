@@ -47,59 +47,53 @@ function Invoke-WMIRemoting {
 	$ClassID = "Custom_WMI_" + (Get-Random)
 	$KeyID = "CmdGUID"
 	
-	$Error.Clear()
-	
-	if($UserName -AND $Password){$classExists = Get-WmiObject -Class $ClassID -ComputerName $ComputerName -List -Namespace "root\cimv2" -Credential $cred}
- 	else{$classExists = Get-WmiObject -Class $ClassID -ComputerName $ComputerName -List -Namespace "root\cimv2"}
-	
-	if($error[0]){break}
-	
-	$Error.Clear()
-    
-	if (-not $classExists) {
-		
-		if($cred){
-			$connectionOptions = New-Object System.Management.ConnectionOptions
-			if($UserName -AND $Password){
-				$connectionOptions.Username = $UserName
-				$connectionOptions.Password = $Password
-			}
+	try{	
+		if($UserName -AND $Password){$classExists = Get-WmiObject -Class $ClassID -ComputerName $ComputerName -List -Namespace "root\cimv2" -Credential $cred}
+	 	else{$classExists = Get-WmiObject -Class $ClassID -ComputerName $ComputerName -List -Namespace "root\cimv2"}
+   	} catch {Write-Output "[-] Access Denied"; Write-Output ""; break}
 
-			$scope = New-Object System.Management.ManagementScope("\\$ComputerName\root\cimv2", $connectionOptions)
-			$scope.Connect()
+     	try{
+		if (-not $classExists) {
 			
-			$createNewClass = New-Object System.Management.ManagementClass($scope, [System.Management.ManagementPath]::new(), $null)
-			$createNewClass["__CLASS"] = $ClassID
-			$createNewClass.Properties.Add($KeyID, [System.Management.CimType]::String, $false)
-			$createNewClass.Properties[$KeyID].Qualifiers.Add("Key", $true)
-			$createNewClass.Properties.Add("OutputData", [System.Management.CimType]::String, $false)
-			$createNewClass.Properties.Add("CommandStatus", [System.Management.CimType]::String, $false)
-			$createNewClass.Put() | Out-Null
+			if($cred){
+				$connectionOptions = New-Object System.Management.ConnectionOptions
+				if($UserName -AND $Password){
+					$connectionOptions.Username = $UserName
+					$connectionOptions.Password = $Password
+				}
+	
+				$scope = New-Object System.Management.ManagementScope("\\$ComputerName\root\cimv2", $connectionOptions)
+				$scope.Connect()
+				
+				$createNewClass = New-Object System.Management.ManagementClass($scope, [System.Management.ManagementPath]::new(), $null)
+				$createNewClass["__CLASS"] = $ClassID
+				$createNewClass.Properties.Add($KeyID, [System.Management.CimType]::String, $false)
+				$createNewClass.Properties[$KeyID].Qualifiers.Add("Key", $true)
+				$createNewClass.Properties.Add("OutputData", [System.Management.CimType]::String, $false)
+				$createNewClass.Properties.Add("CommandStatus", [System.Management.CimType]::String, $false)
+				$createNewClass.Put() | Out-Null
+			}
+			else{
+				$createNewClass = New-Object System.Management.ManagementClass("\\$ComputerName\root\cimv2", [string]::Empty, $null)
+				$createNewClass["__CLASS"] = $ClassID
+				$createNewClass.Properties.Add($KeyID, [System.Management.CimType]::String, $false)
+				$createNewClass.Properties[$KeyID].Qualifiers.Add("Key", $true)
+				$createNewClass.Properties.Add("OutputData", [System.Management.CimType]::String, $false)
+				$createNewClass.Properties.Add("CommandStatus", [System.Management.CimType]::String, $false)
+				$createNewClass.Put() | Out-Null
+			}
 		}
-		else{
-			$createNewClass = New-Object System.Management.ManagementClass("\\$ComputerName\root\cimv2", [string]::Empty, $null)
-			$createNewClass["__CLASS"] = $ClassID
-			$createNewClass.Properties.Add($KeyID, [System.Management.CimType]::String, $false)
-			$createNewClass.Properties[$KeyID].Qualifiers.Add("Key", $true)
-			$createNewClass.Properties.Add("OutputData", [System.Management.CimType]::String, $false)
-			$createNewClass.Properties.Add("CommandStatus", [System.Management.CimType]::String, $false)
-			$createNewClass.Put() | Out-Null
-		}
-	}
+  	} catch {Write-Output "[-] Error Creating Class"; break}
 	
-	if($error[0]){break}
-	
-	$Error.Clear()
-	
-	if($cred){$wmiData = Set-WmiInstance -Class $ClassID -ComputerName $ComputerName -Credential $cred}
-	else{$wmiData = Set-WmiInstance -Class $ClassID -ComputerName $ComputerName}
-	
-	$wmiData.GetType() | Out-Null
-	$GuidOutput = ($wmiData | Select-Object -Property $KeyID -ExpandProperty $KeyID)
-	$wmiData.Dispose()
+	try{
+		if($cred){$wmiData = Set-WmiInstance -Class $ClassID -ComputerName $ComputerName -Credential $cred}
+		else{$wmiData = Set-WmiInstance -Class $ClassID -ComputerName $ComputerName}
+		
+		$wmiData.GetType() | Out-Null
+		$GuidOutput = ($wmiData | Select-Object -Property $KeyID -ExpandProperty $KeyID)
+		$wmiData.Dispose()
+  	} catch {Write-Output "[-] Error Creating Class"; break}
 
-	
-	if($error[0]){break}
 
 	$RunCmd = {
 	        param ([string]$CmdInput)
